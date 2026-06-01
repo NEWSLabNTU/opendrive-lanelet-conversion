@@ -1,3 +1,10 @@
 *pycache*/
 .*
 output/
+
+# Generated conversion artifacts must live in output/, never beside inputs.
+sample_data/**/*.osm
+sample_data/**/id_mapping_*.csv
+sample_data/**/map_origin_*.yaml
+sample_data/**/normalized_*.xodr
+sample_data/**/predown_*
