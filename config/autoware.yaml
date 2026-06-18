@@ -11,3 +11,8 @@ autoware:
     urban: 50
     nonurban: 60
     private: 30
+
+  # Default lane_change tag for a line that has no lane marking to derive it from
+  # (e.g. an unmarked boundary). Typically "yes" or "no". Marked lines (solid ->
+  # no, dashed -> yes, …) are unaffected.
+  default_lane_change: "no"

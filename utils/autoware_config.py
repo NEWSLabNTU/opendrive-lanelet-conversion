@@ -41,4 +41,8 @@ def apply_autoware_config(lanelet2_config, path=None):
         # crdesigner enforces dict type on this attribute; floats read cleanly downstream.
         lanelet2_config.autoware_default_speed_kmh = {k: float(v) for k, v in speed.items()}
 
+    lane_change = cfg.get("default_lane_change")
+    if lane_change is not None:
+        lanelet2_config.autoware_default_lane_change = str(lane_change)
+
     return cfg
