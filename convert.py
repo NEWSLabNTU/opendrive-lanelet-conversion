@@ -203,6 +203,8 @@ def main():
     parser.add_argument("input", help="Path to .xodr file")
     parser.add_argument("output", nargs="?", help="Output .osm path (default: output/<stem>.osm)")
     parser.add_argument("--no-downsample", action="store_true", help="Skip downsampling")
+    parser.add_argument("--no-autoware", action="store_true",
+                        help="Disable Autoware-compatible tagging (lane_change, local_x/y, etc.)")
     parser.add_argument("--concat", action="store_true", help="Merge lane sections (default: no merge)")
     parser.add_argument("--angle-threshold", type=float, default=DEFAULT_ANGLE_THRSH)
     parser.add_argument("--min-dist", type=float, default=DEFAULT_MIN_DIST)
@@ -223,6 +225,9 @@ def main():
 
     odr_conf = OpenDriveConfig()
     odr_conf.concatenate_lanelets_flag = args.concat
+
+    # Autoware-compatible tagging (lane_change, one_way:yes/no, ele on every node…).
+    lanelet2_config.autoware = not args.no_autoware
 
     map_origin = extract_map_origin(input_path)
     origin_path = output_path.with_name(f"map_origin_{stem}.yaml")

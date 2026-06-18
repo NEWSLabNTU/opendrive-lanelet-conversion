@@ -392,6 +392,9 @@ def postprocessDownsamplingOSM(
 no_concat_config = OpenDriveConfig()
 no_concat_config.concatenate_lanelets_flag = False
 
+# Emit Autoware-compatible tagging (one_way:yes/no, speed_limit, lane_change, local_x/y).
+lanelet2_config.autoware = True
+
 process_time_log = {}
 
 for set_name in set_list:
