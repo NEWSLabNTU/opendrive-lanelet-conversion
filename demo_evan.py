@@ -22,6 +22,7 @@ from utils.map_origin import (
     write_map_origin_yaml,
     write_normalized_xodr,
 )
+from utils.autoware_config import apply_autoware_config
 
 # Input handling
 input_dir = Path("./sample_data")
@@ -394,6 +395,8 @@ no_concat_config.concatenate_lanelets_flag = False
 
 # Emit Autoware-compatible tagging (one_way:yes/no, speed_limit, lane_change, local_x/y).
 lanelet2_config.autoware = True
+# Load user-editable defaults (e.g. fallback speed_limit) from config/autoware.yaml.
+apply_autoware_config(lanelet2_config)
 
 process_time_log = {}
 

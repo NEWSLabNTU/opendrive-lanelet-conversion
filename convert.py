@@ -34,6 +34,7 @@ from utils.map_origin import (
     write_map_origin_yaml,
     write_normalized_xodr,
 )
+from utils.autoware_config import DEFAULT_CONFIG_PATH, apply_autoware_config
 
 # --- Constants ---
 PROJ_DEG = "EPSG:4326"
@@ -205,6 +206,8 @@ def main():
     parser.add_argument("--no-downsample", action="store_true", help="Skip downsampling")
     parser.add_argument("--no-autoware", action="store_true",
                         help="Disable Autoware-compatible tagging (lane_change, local_x/y, etc.)")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH),
+                        help="Autoware defaults config (YAML); see config/autoware.yaml")
     parser.add_argument("--concat", action="store_true", help="Merge lane sections (default: no merge)")
     parser.add_argument("--angle-threshold", type=float, default=DEFAULT_ANGLE_THRSH)
     parser.add_argument("--min-dist", type=float, default=DEFAULT_MIN_DIST)
@@ -228,6 +231,10 @@ def main():
 
     # Autoware-compatible tagging (lane_change, one_way:yes/no, ele on every node…).
     lanelet2_config.autoware = not args.no_autoware
+    if lanelet2_config.autoware:
+        speeds = apply_autoware_config(lanelet2_config, args.config).get("default_speed_kmh")
+        if speeds:
+            print(f"Autoware config: {args.config} (default speeds {speeds})")
 
     map_origin = extract_map_origin(input_path)
     origin_path = output_path.with_name(f"map_origin_{stem}.yaml")

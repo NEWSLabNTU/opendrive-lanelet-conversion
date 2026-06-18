@@ -1,0 +1,13 @@
+# Autoware conversion defaults.
+#
+# These values fill in tags that the OpenDRIVE source does not provide.
+# Edit them to match the target ODD; convert.py / demo_evan.py load this file
+# automatically. Pass `--config <path>` to convert.py to use a different file.
+
+autoware:
+  # Default speed_limit (km/h) for a drivable lane when the source map has no
+  # MAX_SPEED sign. Keyed by the lanelet `location` tag.
+  default_speed_kmh:
+    urban: 50
+    nonurban: 60
+    private: 30
