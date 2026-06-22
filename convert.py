@@ -105,21 +105,26 @@ def _angle_at(p1, p2, p3):
     return math.degrees(math.acos(max(min(dot / (n1 * n2), 1.0), -1.0)))
 
 
-def _simplify_way(points, angle_thrsh, min_dist):
+def _simplify_indices(points, angle_thrsh, min_dist):
+    """Indices of the points kept by downsampling (first and last always kept)."""
     if len(points) <= 2:
-        return points
-    kept = [points[0]]
+        return list(range(len(points)))
+    kept = [0]
     last = points[0]
     for i in range(1, len(points) - 1):
         angle = _angle_at(points[i - 1], points[i], points[i + 1])
         dist = _haversine(last, points[i])
         if angle < angle_thrsh and dist >= min_dist:
-            kept.append(points[i])
+            kept.append(i)
             last = points[i]
-    kept.append(points[-1])
-    if len(kept) < 2 and len(points) >= 2:
-        return [points[0], points[-1]]
+    kept.append(len(points) - 1)
+    if len(kept) < 2:
+        return [0, len(points) - 1]
     return kept
+
+
+def _simplify_way(points, angle_thrsh, min_dist):
+    return [points[i] for i in _simplify_indices(points, angle_thrsh, min_dist)]
 
 
 def downsample_osm(osm_root, angle_thrsh=DEFAULT_ANGLE_THRSH, min_dist=DEFAULT_MIN_DIST):
@@ -139,43 +144,44 @@ def downsample_osm(osm_root, angle_thrsh=DEFAULT_ANGLE_THRSH, min_dist=DEFAULT_M
     }
 
     new_node_id_gen = itertools.count(1_000_000)
-    used_node_ids = set()
-    new_nodes = []
+    # Map each surviving ORIGINAL node id to one new node id. Successive lanelets
+    # share their end-cross-section node ids (predecessor's last == successor's
+    # first) — connectivity is encoded by that shared identity. Minting a fresh id
+    # per (way, point) duplicated those nodes and broke succ/pred routing
+    # (vm-01-21), so reuse one new id per original node across every way.
+    old_to_new = {}
+    new_nodes = {}
 
     for way in osm_root.findall("way"):
-        nd_refs = [nd.get("ref") for nd in way.findall("nd")]
-        coords = [nodes[ref][:2] for ref in nd_refs if ref in nodes]
-
-        if len(coords) < 2:
+        refs = [nd.get("ref") for nd in way.findall("nd") if nd.get("ref") in nodes]
+        if len(refs) < 2:
             continue
 
-        simplified = _simplify_way(coords, angle_thrsh, min_dist)
-        if len(simplified) < 2:
+        coords = [nodes[ref][:2] for ref in refs]
+        kept_refs = [refs[i] for i in _simplify_indices(coords, angle_thrsh, min_dist)]
+        if len(kept_refs) < 2:
             continue
 
         for nd in way.findall("nd"):
             way.remove(nd)
 
-        for lat, lon in simplified:
-            local_x, local_y = transformer.transform(lon, lat)
-            ele = next(
-                (nodes[ref][2] for ref in nd_refs
-                 if nodes[ref][0] == lat and nodes[ref][1] == lon),
-                0.0,
-            )
-            node_id = str(next(new_node_id_gen))
-            if node_id not in used_node_ids:
-                used_node_ids.add(node_id)
-                node = etree.Element("node", id=node_id, visible="true", version="1", lat="", lon="")
+        for ref in kept_refs:
+            new_id = old_to_new.get(ref)
+            if new_id is None:
+                lat, lon, ele = nodes[ref]
+                local_x, local_y = transformer.transform(lon, lat)
+                new_id = str(next(new_node_id_gen))
+                old_to_new[ref] = new_id
+                node = etree.Element("node", id=new_id, visible="true", version="1", lat="", lon="")
                 node.append(etree.Element("tag", k="local_x", v=f"{local_x:.4f}"))
                 node.append(etree.Element("tag", k="local_y", v=f"{local_y:.4f}"))
                 node.append(etree.Element("tag", k="ele", v=f"{ele:.4f}"))
-                new_nodes.append(node)
-            way.append(etree.Element("nd", ref=node_id))
+                new_nodes[new_id] = node
+            way.append(etree.Element("nd", ref=new_id))
 
     for node in osm_root.findall("node"):
         osm_root.remove(node)
-    for node in new_nodes:
+    for node in new_nodes.values():
         osm_root.append(node)
 
     osm_root.set("generator", "VMB")
