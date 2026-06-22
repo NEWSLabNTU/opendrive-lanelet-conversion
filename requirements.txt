@@ -1,31 +1,18 @@
-# Source: https://commonroad-scenario-designer.readthedocs.io/en/latest/#requirements
+# Python dependencies for the OpenDRIVE -> Lanelet2 conversion pipeline.
+#
+# crdesigner is the pinned git submodule (extern/commonroad-scenario-designer),
+# installed editable so local edits to the autoware_dev fork take effect. It also
+# supplies the heavy transitive deps (commonroad-io, lxml, pyproj, shapely, numpy,
+# scipy, networkx, pyyaml, matplotlib, pandas, ...). Do NOT add a bare
+# `commonroad-scenario-designer` line -- that pulls the PyPI release, which lacks
+# the autoware_dev changes.
+#
+# The packages below are the ones the conversion scripts import directly; they are
+# left unpinned here and resolved to exact versions in requirements.lock
+# (generated with: uv pip compile requirements.txt -o requirements.lock).
 
-Pillow>=7.1.1
-sumocr>=2021.5
-enum34>=1.1.10
-numpy>=1.26.1
-lxml>=4.2.2,<=5.0.0
-commonroad-io>=2024.2,<=2024.3
-commonroad-clcs>=2025.1
-commonroad-sumo>=2025.1.3
-pyproj>=3.4.1
-scipy>=1.11.3
-shapely>=2.0.1
-mercantile>=1.2.1
-utm>=0.7.0
-mgrs>=1.4.5
-ordered-set>=4.1.0
-iso3166>=2.1.1
-networkx>=3.0
-omegaconf>=2.3.0
-pyyaml>=6.0
-antlr4-python3-runtime==4.9.3
-matplotlib>=3.6.0
-pandas>=2.0.2
-similaritymeasures>=0.4.4
-pyclothoids>=0.1.5
-kdtree>=0.16
-PyQt6>=6.6.0
-jinja2
-typeguard
-commonroad-scenario-designer
+-e ./extern/commonroad-scenario-designer
+
+lxml
+pyproj
+pyyaml

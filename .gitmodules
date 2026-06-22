@@ -1,0 +1,4 @@
+[submodule "extern/commonroad-scenario-designer"]
+	path = extern/commonroad-scenario-designer
+	url = https://github.com/yande001/crdesigner-autoware.git
+	branch = autoware_dev

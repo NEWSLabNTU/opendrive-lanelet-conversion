@@ -2,6 +2,10 @@
 .*
 output/
 
+# Python virtualenv (recreated via `uv venv olconversion`)
+olconversion/
+*.venv/
+
 # Generated conversion artifacts must live in output/, never beside inputs.
 sample_data/**/*.osm
 sample_data/**/id_mapping_*.csv

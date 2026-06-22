@@ -9,6 +9,12 @@ import math
 import itertools
 from datetime import date
 
+# Use the pinned crdesigner submodule (extern/commonroad-scenario-designer).
+# Editable-installed into the venv via requirements.txt; this sys.path insert is a
+# defensive fallback so the script also works straight from a fresh checkout.
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_SCRIPT_DIR, "extern", "commonroad-scenario-designer"))
+
 from crdesigner.common.config.lanelet2_config import lanelet2_config
 from crdesigner.common.config.opendrive_config import OpenDriveConfig
 from crdesigner.map_conversion.lanelet2.cr2lanelet import CR2LaneletConverter

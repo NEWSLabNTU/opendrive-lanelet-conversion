@@ -17,9 +17,11 @@ from pathlib import Path
 from lxml import etree
 from pyproj import Transformer
 
-# Use local crdesigner repo
+# Use the pinned crdesigner submodule (extern/commonroad-scenario-designer).
+# Editable-installed into the venv via requirements.txt; this sys.path insert is a
+# defensive fallback so the script also works straight from a fresh checkout.
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CR_DESIGNER_PATH = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "commonroad-scenario-designer"))
+CR_DESIGNER_PATH = os.path.abspath(os.path.join(_SCRIPT_DIR, "extern", "commonroad-scenario-designer"))
 sys.path.insert(0, CR_DESIGNER_PATH)
 
 from crdesigner.common.config.lanelet2_config import lanelet2_config
