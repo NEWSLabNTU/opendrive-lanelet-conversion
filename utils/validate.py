@@ -189,6 +189,122 @@ def check_vm_01_03(m):
                        f"boundary ways shared by >1 lanelet", shared, len(refs))
 
 
+def _polylines_equal(a, b, tol):
+    """True if polylines coincide (same or reversed point order) within tol."""
+    if len(a) != len(b) or len(a) < 2:
+        return False
+    fwd = all(math.dist(a[i], b[i]) < tol for i in range(len(a)))
+    if fwd:
+        return True
+    return all(math.dist(a[i], b[len(b) - 1 - i]) < tol for i in range(len(a)))
+
+
+MIN_BOUNDARY_LEN_M = 1.0       # ignore degenerate sub-metre stub boundaries
+
+
+def _lanelet_centroid(m, ll):
+    """Mean of all boundary points of a lanelet, or None."""
+    pts = []
+    for wid in m.lanelet_bound_ways(ll).values():
+        pts += m.way_polyline(wid)
+    if not pts:
+        return None
+    return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
+
+
+def _opposite_sides(ca, cb, ref):
+    """True if centroids ca, cb lie on opposite sides of the line through ref.
+
+    Node-order independent: uses the line's normal, not its direction. Two lanes
+    sharing a centerline are opposing iff their bodies straddle that line; a
+    duplicate/degenerate co-directional pair has near-coincident centroids (same
+    side) and is rejected.
+    """
+    if not (ca and cb) or len(ref) < 2:
+        return False
+    dx, dy = ref[-1][0] - ref[0][0], ref[-1][1] - ref[0][1]
+    nx, ny = -dy, dx                       # normal to the boundary
+    sa = (ca[0] - ref[0][0]) * nx + (ca[1] - ref[0][1]) * ny
+    sb = (cb[0] - ref[0][0]) * nx + (cb[1] - ref[0][1]) * ny
+    return sa * sb < 0 and abs(sa) > 1e-3 and abs(sb) > 1e-3
+
+
+def check_vm_01_04(m):
+    """Opposing-traffic centerline sharing.
+
+    Two opposing lanes meet at a shared centerline. In the LL2 model that is a
+    boundary `way` referenced by both lanelets with the *same* role (both `left`
+    for RHT, both `right` for LHT) — whereas same-direction sharing (vm-01-03)
+    uses *different* roles (`left`+`right`). So a same-role shared way is, by
+    construction, an opposing centerline; geometry only needs to confirm the two
+    bodies straddle it (rejecting degenerate co-directional duplicates).
+
+    PASS — at least one same-role way shared by an opposing lanelet pair.
+    FAIL — two opposing lanelets' same-role boundaries are geometrically
+           coincident yet kept as distinct way ids (centerline not merged).
+    SKIP — no opposing-lane geometry present at all.
+    """
+    tol = 0.5
+    owners = defaultdict(list)             # way id -> [(lanelet element, role)]
+    for ll in m.lanelets:
+        for role, wid in m.lanelet_bound_ways(ll).items():
+            owners[wid].append((ll, role))
+    centroid = {id(ll): _lanelet_centroid(m, ll) for ll in m.lanelets}
+
+    # PASS evidence: a same-role shared way whose two owners straddle it.
+    shared_opposing = 0
+    for wid, own in owners.items():
+        for role in ("left", "right"):
+            grp = [ll for ll, r in own if r == role]
+            ref = m.way_polyline(wid)
+            if any(_opposite_sides(centroid[id(grp[i])], centroid[id(grp[j])], ref)
+                   for i in range(len(grp)) for j in range(i + 1, len(grp))):
+                shared_opposing += 1
+                break
+
+    # FAIL evidence: coincident-but-distinct same-role boundaries of opposing
+    # lanelets. Bucket by rounded endpoints (1 m grid) so the test stays ~O(n);
+    # drop sub-metre stubs so degenerate duplicate lanelets don't register.
+    boundary = []
+    for wid, t in m.way_tags.items():
+        if t.get("type") not in ("line_thin", "line_thick", "road_border"):
+            continue
+        pts = m.way_polyline(wid)
+        if len(pts) >= 2 and _polyline_len(pts) >= MIN_BOUNDARY_LEN_M:
+            boundary.append((wid, pts))
+    buckets = defaultdict(list)
+    for wid, pts in boundary:
+        p0 = (round(pts[0][0]), round(pts[0][1]))
+        p1 = (round(pts[-1][0]), round(pts[-1][1]))
+        buckets[tuple(sorted((p0, p1)))].append((wid, pts))   # reverse collides
+    opposing_dupes = 0
+    for group in buckets.values():
+        for i in range(len(group)):
+            wi, pi = group[i]
+            for j in range(i + 1, len(group)):
+                wj, pj = group[j]
+                if not _polylines_equal(pi, pj, tol):
+                    continue
+                roles_i = {r for _, r in owners.get(wi, [])}
+                roles_j = {r for _, r in owners.get(wj, [])}
+                if not (roles_i and roles_i == roles_j):
+                    continue
+                if any(_opposite_sides(centroid[id(a)], centroid[id(b)], pi)
+                       for a, _ in owners.get(wi, []) for b, _ in owners.get(wj, [])):
+                    opposing_dupes += 1
+
+    if opposing_dupes:
+        return CheckResult("vm-01-04", "Opposing centerline sharing", FAIL,
+                           "opposing boundaries coincident but not merged into one way",
+                           opposing_dupes, len(boundary))
+    if not shared_opposing:
+        return CheckResult("vm-01-04", "Opposing centerline sharing", SKIP,
+                           "no opposing-lane geometry detected")
+    return CheckResult("vm-01-04", "Opposing centerline sharing", PASS,
+                       "opposing lanes share a same-role centerline way",
+                       shared_opposing, len(owners))
+
+
 def check_vm_01_05(m):
     """Geometry smoothness: no boundary way has an interior kink below threshold."""
     jagged = 0
@@ -300,7 +416,7 @@ def check_vm_07_04(m):
 
 
 CHECKS = [
-    check_vm_01_01, check_vm_01_02, check_vm_01_03, check_vm_01_05, check_vm_01_24,
+    check_vm_01_01, check_vm_01_02, check_vm_01_03, check_vm_01_04, check_vm_01_05, check_vm_01_24,
     check_vm_03_01, check_vm_03_02, check_vm_04_01, check_vm_05_01, check_vm_07_04,
 ]
 
