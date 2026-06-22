@@ -321,6 +321,111 @@ def check_vm_01_05(m):
                        f"ways with a kink <{SMOOTH_MIN_ANGLE_DEG:.0f}°", jagged, total)
 
 
+SAME_LINE_TOL_M = 0.05   # boundaries within this are treated as one physical line
+
+
+def _subtype_boundaries(m, subtypes):
+    """[(way_id, polyline)] for boundaries of lanelets whose subtype is in `subtypes`."""
+    out = []
+    for ll in m.lanelets:
+        if _tags(ll).get("subtype") in subtypes:
+            for wid in m.lanelet_bound_ways(ll).values():
+                pts = m.way_polyline(wid)
+                if len(pts) >= 2 and _polyline_len(pts) >= MIN_BOUNDARY_LEN_M:
+                    out.append((wid, pts))
+    return out
+
+
+def check_vm_01_16(m):
+    """Road and adjacent road_shoulder share the boundary line.
+
+    Where a road boundary and a road_shoulder boundary are the *same physical
+    line* (coincident within SAME_LINE_TOL_M, matching vertex count), they must
+    resolve to one shared `way` id. Shoulders that merely run beside other
+    shoulders, or whose edge is genuinely offset from the road (a real gap), are
+    not adjacency cases and are not flagged. Sharing itself is produced by the
+    cr2lanelet geometric-merge fallback (see vm-01-04); this check confirms it.
+    """
+    shoulders = [ll for ll in m.lanelets if _tags(ll).get("subtype") == "road_shoulder"]
+    if not shoulders:
+        return CheckResult("vm-01-16", "Road/shoulder sharing", SKIP,
+                           "no road_shoulder lanelets")
+    road_idx = defaultdict(list)
+    for wid, pts in _subtype_boundaries(m, ("road",)):
+        p0 = (round(pts[0][0]), round(pts[0][1]))
+        p1 = (round(pts[-1][0]), round(pts[-1][1]))
+        road_idx[tuple(sorted((p0, p1)))].append((wid, pts))
+    unmerged = set()
+    for wid, pts in _subtype_boundaries(m, ("road_shoulder",)):
+        p0 = (round(pts[0][0]), round(pts[0][1]))
+        p1 = (round(pts[-1][0]), round(pts[-1][1]))
+        for rw, rpts in road_idx.get(tuple(sorted((p0, p1))), []):
+            if rw != wid and _polylines_equal(pts, rpts, SAME_LINE_TOL_M):
+                unmerged.add(tuple(sorted((wid, rw))))
+    if unmerged:
+        return CheckResult("vm-01-16", "Road/shoulder sharing", FAIL,
+                           "road & shoulder boundaries identical but not one way",
+                           len(unmerged), len(shoulders))
+    return CheckResult("vm-01-16", "Road/shoulder sharing", PASS,
+                       "adjacent road/shoulder boundaries share one way", 0, len(shoulders))
+
+
+def _lanelet_cross_sections(m, ll):
+    """The two end cross-sections of a lanelet as frozensets of {left-end-node,
+    right-end-node}. Order-independent (pairs each left endpoint with the nearer
+    right endpoint), so shared-way reversal doesn't matter. Successive lanelets
+    share a cross-section (predecessor end == successor start); lateral neighbours
+    do not (they share only one corner)."""
+    bw = m.lanelet_bound_ways(ll)
+    lw, rw = bw.get("left"), bw.get("right")
+    ln, rn = m.way_nodes.get(lw, []), m.way_nodes.get(rw, [])
+    if len(ln) < 2 or len(rn) < 2:
+        return []
+    le, re = [ln[0], ln[-1]], [rn[0], rn[-1]]
+    if not all(n in m.nodes for n in le + re):
+        return []
+    p = lambda n: m.nodes[n][:2]
+    if math.dist(p(le[0]), p(re[0])) <= math.dist(p(le[0]), p(re[1])):
+        return [frozenset((le[0], re[0])), frozenset((le[1], re[1]))]
+    return [frozenset((le[0], re[1])), frozenset((le[1], re[0]))]
+
+
+def check_vm_01_21(m):
+    """Forward/backward connectivity (succ/pred).
+
+    Lanelet2 encodes succ/pred implicitly: a lanelet's end cross-section shares
+    its node ids with the next lanelet's start cross-section. A road lanelet whose
+    *both* end cross-sections are unshared is fully isolated → unroutable. One open
+    end is allowed (map boundary) and reported as info. Cross-sections are matched
+    against all lanelets, so a road linking to a junction/shoulder counts.
+    """
+    def _real(ll):  # ignore degenerate sub-metre stub lanelets (geometry artifacts)
+        bw = m.lanelet_bound_ways(ll)
+        return max((_polyline_len(m.way_polyline(bw.get(s))) for s in ("left", "right")
+                    if len(m.way_polyline(bw.get(s))) >= 2), default=0.0) >= MIN_BOUNDARY_LEN_M
+
+    roads = [ll for ll in m.lanelets if _tags(ll).get("subtype") == "road" and _real(ll)]
+    if not roads:
+        return CheckResult("vm-01-21", "Forward/backward connectivity", SKIP,
+                           "no road lanelets")
+    cross = defaultdict(int)
+    for ll in m.lanelets:
+        for c in _lanelet_cross_sections(m, ll):
+            cross[c] += 1
+    isolated = dead_end = 0
+    for ll in roads:
+        cs = _lanelet_cross_sections(m, ll)
+        shared = sum(1 for c in cs if cross[c] > 1)
+        if shared == 0:
+            isolated += 1
+        elif shared < len(cs):
+            dead_end += 1
+    status = PASS if isolated == 0 else FAIL
+    return CheckResult("vm-01-21", "Forward/backward connectivity", status,
+                       f"isolated road lanelets (no succ/pred); {dead_end} one-ended (map edge)",
+                       isolated, len(roads))
+
+
 def check_vm_01_24(m):
     """Lanelet length: boundary ≤100 m straight / ≤20 m curved."""
     over = 0
@@ -416,7 +521,8 @@ def check_vm_07_04(m):
 
 
 CHECKS = [
-    check_vm_01_01, check_vm_01_02, check_vm_01_03, check_vm_01_04, check_vm_01_05, check_vm_01_24,
+    check_vm_01_01, check_vm_01_02, check_vm_01_03, check_vm_01_04, check_vm_01_05,
+    check_vm_01_16, check_vm_01_21, check_vm_01_24,
     check_vm_03_01, check_vm_03_02, check_vm_04_01, check_vm_05_01, check_vm_07_04,
 ]
 
